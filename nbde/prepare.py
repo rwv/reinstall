@@ -63,7 +63,8 @@ d-i partman-lvm/confirm boolean true
 d-i partman-lvm/confirm_nooverwrite boolean true
 d-i partman-crypto/confirm boolean true
 d-i partman-crypto/confirm_nooverwrite boolean true
-d-i partman-auto-crypto/erase_disks boolean true
+# Keep the repartition/format step, but skip the full-partition random overwrite.
+d-i partman-auto-crypto/erase_disks boolean false
 """
     # This preseed is private and embedded locally, so the installer can load
     # password questions through its native preseed path, including seen flags.

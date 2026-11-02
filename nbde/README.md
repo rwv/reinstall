@@ -52,7 +52,11 @@ The generated initrd has mode 0600. Keep the private directory on tmpfs under
    preserving existing Ansible and CI trust. Preserve the firmware boot mode.
 
 The NBDE profile uses Debian's encrypted atomic LVM recipe, including an
-unencrypted `/boot`. It erases the encrypted partition during installation.
+unencrypted `/boot`. It sets `partman-auto-crypto/erase_disks=false`, skipping
+the full-partition random overwrite to reduce downtime. Repartitioning and
+formatting still replace the old filesystem; recover application files from
+the backup. Unoverwritten old plaintext remnants are an accepted tradeoff of
+this profile.
 The late hook binds Clevis to Tang, verifies that key against the LUKS device,
 adds early networking and the HTTPS CA bundle to initramfs, and configures
 public-key-only Dropbear on port 2222 for recovery. This initial profile adds
@@ -74,19 +78,38 @@ servers, revokes the temporary installation slot and saves a header backup in
 both temporary plaintext input files and any installation initrd copies.
 Do not preserve a header containing the temporary slot as a recovery artifact.
 
-Apply provisioning, restore application configuration and state selectively,
-and recreate containers from their recorded image digest. Do not restore the
+For production migrations, apply the provisioning needed for management access
+and the container runtime first, restore application configuration and state
+selectively, and recreate containers from their recorded image digest. Resume
+traffic after checking application enrollment and external HTTPS, then complete
+monitoring, backup and other provisioning while the application runs. Do not
+restore the
 old `/etc/fstab`, `/etc/crypttab`, `/boot`, machine-id or Docker daemon metadata
 over the new installation. Restore Docker volume contents through a volume
-mount with the application stopped. Re-enable automatic reboots after checking:
+mount with the application stopped. Verify on each host:
 
 - Actual root filesystem is behind LUKS2; recovery and Clevis slots work.
 - A cold boot reaches SSH without typing a passphrase.
-- Early SSH plus the recovery passphrase works when Tang is unavailable.
-- Rebuilt initramfs still boots; CA certificates, network configuration and
-  the required drivers are present.
 - Application enrollment, HTTPS and customer origin access work. A local ping
   health check alone does not verify the control plane or customer requests.
+
+Before using a new installer profile, validate early SSH recovery with Tang
+unavailable and boot a rebuilt initramfs in a lab/canary. The tested profile
+includes CA certificates, early networking and VirtIO drivers. Extra validation
+reboots are not required before restoring traffic on every later migration.
+
+## Keep the offline window short
+
+Prepare and verify backups, installer downloads, private configuration and
+application restore files while the original service is still running. For a
+stateless node, stop it immediately before the installer reboot. For mutable
+data, take the bulk backup online and quiesce writes for a final incremental
+backup. Keep installer SSH available and act on prompts without leaving the
+machine idle at a hold screen.
+
+An in-place reinstall still keeps the machine unavailable while Debian is
+installed. When a shorter cutover is required, prepare an encrypted replacement
+machine in parallel and move traffic after it is healthy.
 
 Fresh VPS installations follow the same installer/provisioning steps, starting
 from the provider's temporary disk-based OS. The upstream preparation script

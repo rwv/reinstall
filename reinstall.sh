@@ -7,7 +7,7 @@
 
 set -eE
 # rwv fork: optional private Debian installer configuration; see nbde/README.md.
-confhome=https://raw.githubusercontent.com/rwv/reinstall/codex/debian13-luks-tang
+confhome=https://raw.githubusercontent.com/rwv/reinstall/main
 confhome_cn=
 # confhome_cn=https://www.ghproxy.cc/https://raw.githubusercontent.com/bin456789/reinstall/main
 
