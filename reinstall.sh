@@ -6,8 +6,9 @@
 # alpine 默认没有 bash，因此 shebang 用 sh，再 exec 切换到 bash
 
 set -eE
-confhome=https://raw.githubusercontent.com/bin456789/reinstall/main
-confhome_cn=https://cnb.cool/bin456789/reinstall/-/git/raw/main
+# rwv fork: optional private Debian installer configuration; see nbde/README.md.
+confhome=https://raw.githubusercontent.com/rwv/reinstall/codex/debian13-luks-tang
+confhome_cn=
 # confhome_cn=https://www.ghproxy.cc/https://raw.githubusercontent.com/bin456789/reinstall/main
 
 # 用于判断 reinstall.sh 和 trans.sh 是否兼容
@@ -111,6 +112,7 @@ Usage: $reinstall_____ anolis      7|8|23
                        [--ssh-port    PORT]
                        [--web-port    PORT]
                        [--frpc-config PATH]
+                       [--debian-config DIR]  (Debian 13 installer only)
 
                        For Windows Only:
                        [--allow-ping]
@@ -3691,7 +3693,11 @@ build_nextos_cmdline() {
         # 如果要设置位数: video=800x600-16
         nextos_cmdline="lowmem/low=1 auto=true priority=critical"
         # nextos_cmdline+=" vga=788 video=800x600"
-        nextos_cmdline+=" url=$nextos_ks"
+        if [ -n "$debian_config" ]; then
+            nextos_cmdline+=" file=/configs/debian/preseed.cfg"
+        else
+            nextos_cmdline+=" url=$nextos_ks"
+        fi
         nextos_cmdline+=" mirror/http/hostname=${nextos_udeb_mirror%/*}"
         nextos_cmdline+=" mirror/http/directory=/${nextos_udeb_mirror##*/}"
         nextos_cmdline+=" base-installer/kernel/image=$nextos_kernel"
@@ -4516,6 +4522,14 @@ This script is outdated, please download reinstall.sh again.
         cat "$frpc_config" >$initrd_dir/configs/frpc.conf
     fi
 
+    # Keep per-machine secrets inside the local installer initrd, never in a
+    # public preseed URL or on the kernel command line.
+    if [ -n "$debian_config" ]; then
+        mkdir -m 0700 "$initrd_dir/configs/debian"
+        cp -a "$debian_config/." "$initrd_dir/configs/debian/"
+        chmod -R go-rwx "$initrd_dir/configs/debian"
+    fi
+
     # 收集 cloud-data 打包进 initrd
     if [ -n "$cloud_data" ]; then
         mkdir -p $initrd_dir/configs/cloud-data
@@ -4567,6 +4581,9 @@ This script is outdated, please download reinstall.sh again.
     #       portable format.If you wish the old portable
     #       (ASCII) archive format, use "-H odc" instead.
     find . | cpio --quiet -o -H newc -R 0:0 | gzip -1 >/reinstall-initrd
+    if [ -n "$debian_config" ]; then
+        chmod 0600 /reinstall-initrd
+    fi
     cd - >/dev/null
 }
 
@@ -4980,6 +4997,7 @@ for o in ci installer debug minimal no-cloud-kernel no-auto-drivers allow-ping f
     boot-wim: \
     img: \
     cloud-data: \
+    debian-config: \
     lang: \
     user: username: \
     passwd: password: \
@@ -5009,6 +5027,16 @@ while true; do
     -x | --debug)
         set -x
         shift
+        ;;
+    --debian-config)
+        # Validate before mkdir_clear wipes our working directory.
+        debian_config=$(readlink -f -- "$2")
+        case "$debian_config" in
+        "$tmp" | "$tmp"/*)
+            error_and_exit "Keep --debian-config outside $tmp (prefer /run)"
+            ;;
+        esac
+        shift 2
         ;;
     --)
         shift
@@ -5090,6 +5118,12 @@ while true; do
             error_and_exit "Invalid $1 value: $2"
         fi
         hold=$2
+        shift 2
+        ;;
+    --debian-config)
+        debian_config=$(readlink -f -- "$2")
+        [ -d "$debian_config" ] && [ -f "$debian_config/preseed.cfg" ] ||
+            error_and_exit "--debian-config requires a directory containing preseed.cfg"
         shift 2
         ;;
     --frpc-conf | --frpc-config)
@@ -5319,6 +5353,12 @@ done
 
 # 检查必须的参数
 verify_os_args
+
+if [ -n "$debian_config" ]; then
+    [ "$distro" = debian ] && [ "$releasever" = 13 ] && ! is_use_cloud_image ||
+        error_and_exit "--debian-config supports only the Debian 13 installer"
+    [ -n "$ssh_keys" ] || error_and_exit "--debian-config requires --ssh-key"
+fi
 
 # 用户名密码
 if ! is_netboot_xyz; then
