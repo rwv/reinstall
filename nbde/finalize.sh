@@ -14,7 +14,8 @@ crypto_device=$(cat "$state_dir/bootstrap-pending")
 cryptsetup isLuks --type luks2 "$crypto_device"
 
 check_dir=$(mktemp -d /run/nbde-finalize.XXXXXX)
-trap 'rm -rf "$check_dir"' EXIT HUP INT TERM
+trap 'rm -rf "$check_dir"' EXIT
+trap 'exit 1' HUP INT TERM
 clevis luks pass -d "$crypto_device" -s 1 > "$check_dir/tang-key"
 cryptsetup open --test-passphrase --key-file "$check_dir/tang-key" "$crypto_device"
 
@@ -31,8 +32,7 @@ if cryptsetup luksDump --dump-json-metadata "$crypto_device" | jose fmt -j- -g k
 fi
 
 chmod 0700 "$state_dir"
-if [ ! -f "$state_dir/luks-header.bin" ]; then
-    cryptsetup luksHeaderBackup --header-backup-file "$state_dir/luks-header.bin" "$crypto_device"
-fi
+cryptsetup luksHeaderBackup --batch-mode --header-backup-file "$state_dir/.luks-header.new" "$crypto_device"
+mv "$state_dir/.luks-header.new" "$state_dir/luks-header.bin"
 rm "$state_dir/bootstrap-pending"
 echo 'Recovery key verified, temporary installation key revoked, LUKS header saved'
