@@ -10,18 +10,18 @@ set -- $crypto_devices
 crypto_device=$1
 cryptsetup isLuks --type luks2 "$crypto_device"
 
-mkdir -p /target/run/nbde-setup
-cp /configs/debian/bootstrap-key /target/run/nbde-setup/bootstrap-key
-cp /configs/debian/tang.json /target/run/nbde-setup/tang.json
-in-target clevis luks bind -d "$crypto_device" -k /run/nbde-setup/bootstrap-key \
+mkdir -p /target/root/.nbde-setup
+cp /configs/debian/bootstrap-key /target/root/.nbde-setup/bootstrap-key
+cp /configs/debian/tang.json /target/root/.nbde-setup/tang.json
+in-target clevis luks bind -d "$crypto_device" -k /root/.nbde-setup/bootstrap-key \
     tang "$(cat /configs/debian/tang.json)"
 
 # Verify the Tang exchange against this actual LUKS keyslot before rebooting.
 in-target /bin/sh -ec '
-    clevis luks pass -d "$1" -s 1 > /run/nbde-setup/check-key
-    cryptsetup open --test-passphrase --key-file /run/nbde-setup/check-key "$1"
+    clevis luks pass -d "$1" -s 1 > /root/.nbde-setup/check-key
+    cryptsetup open --test-passphrase --key-file /root/.nbde-setup/check-key "$1"
 ' _ "$crypto_device"
-rm -rf /target/run/nbde-setup
+rm -rf /target/root/.nbde-setup
 
 mkdir -p /target/etc/initramfs-tools/conf.d /target/etc/initramfs-tools/hooks
 cp /configs/debian/initramfs.conf /target/etc/initramfs-tools/conf.d/nbde
